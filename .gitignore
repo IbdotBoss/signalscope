@@ -1,0 +1,27 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build
+.next/
+dist/
+build/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.env
+.venv/
+
+# IDE
+.vscode/settings.json
+.idea/
+
+# Misc
+.DS_Store
+*.log
+npm-debug.log*
