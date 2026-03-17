@@ -8,17 +8,14 @@ interface Report {
   verdict: string;
   confidence: string;
   summary: string;
-  bull_case: string[];
-  bear_case: string[];
+  bullets: string[];
   risk_flags: string[];
-  smart_money: { signal: string; notes: string };
-  cross_chain_evidence: { chain: string; type: string; url: string }[];
-  sources: { label: string; type: string }[];
-  raw_nansen?: string;
+  evidence_links: { label: string; url: string }[];
+  raw: any;
 }
 
 const EXAMPLES = [
-  { label: "vitalik.eth", value: "vitalik.eth" },
+  { label: "vitalik.eth", value: "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045" },
   { label: "Sample Wallet", value: "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb" },
   { label: "Base Token", value: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" },
 ];
@@ -36,37 +33,29 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [report, setReport] = useState<Report | null>(null);
   const [showRaw, setShowRaw] = useState(false);
+  const [error, setError] = useState("");
 
   const investigate = async () => {
     if (!input.trim()) return;
     setLoading(true);
+    setError("");
     
     try {
       const res = await fetch("http://localhost:8000/api/investigate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ input, depth: "standard" }),
+        body: JSON.stringify({ input, depth: "standard", chain_preference: "ethereum" }),
       });
+      
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || "Analysis failed");
+      }
+      
       const data = await res.json();
       setReport(data);
-    } catch (e) {
-      // Fallback mock for demo
-      const mockScore = Math.floor(Math.random() * 60) + 30;
-      setReport({
-        entity: { input, normalized: input.toLowerCase(), type: "wallet" },
-        score: mockScore,
-        verdict: mockScore >= 70 ? "strong" : mockScore >= 50 ? "watchlist" : "weak",
-        confidence: mockScore >= 70 ? "high" : "medium",
-        summary: `This wallet shows ${mockScore >= 70 ? "strong" : "moderate"} characteristics based on available onchain data.`,
-        bull_case: ["Smart Money activity detected", "Cross-chain presence confirmed"],
-        bear_case: ["Evidence is limited", "Signal requires more context"],
-        risk_flags: ["Standard due diligence required"],
-        smart_money: { signal: "moderate", notes: "Net flows indicate activity" },
-        cross_chain_evidence: [
-          { chain: "base", type: "wallet", url: `https://base.blockscout.com/address/${input}` },
-        ],
-        sources: [{ label: "Nansen CLI", type: "nansen" }],
-      });
+    } catch (e: any) {
+      setError(e.message || "Failed to analyze. Make sure the API server is running.");
     }
     setLoading(false);
   };
@@ -76,7 +65,6 @@ export default function Home() {
 
   return (
     <main style={{ minHeight: "100vh", background: "var(--bg)" }}>
-      {/* Header */}
       <header style={{ 
         padding: "24px 32px", 
         borderBottom: "1px solid var(--border-soft)",
@@ -99,16 +87,11 @@ export default function Home() {
           }}>S</span>
           <span style={{ fontSize: "18px", fontWeight: "600", color: "var(--text-primary)" }}>SignalScope</span>
         </div>
-        <a href="/api-and-skill" style={{ 
-          color: "var(--text-secondary)", 
-          textDecoration: "none",
-          fontSize: "14px"
-        }}>API & Skill →</a>
+        <a href="/api-and-skill" style={{ color: "var(--text-secondary)", textDecoration: "none", fontSize: "14px" }}>API & Skill →</a>
       </header>
 
       <div style={{ maxWidth: "720px", margin: "0 auto", padding: "48px 24px" }}>
         {!report ? (
-          /* Hero + Input */
           <div style={{ textAlign: "center" }}>
             <h1 style={{ 
               fontSize: "48px", 
@@ -130,7 +113,17 @@ export default function Home() {
               Smart Money intelligence from Nansen CLI, one conviction report.
             </p>
 
-            {/* Input Shell */}
+            {error && (
+              <div style={{ 
+                background: "rgba(255,107,129,0.1)", 
+                border: "1px solid var(--danger)",
+                borderRadius: "8px",
+                padding: "16px",
+                color: "var(--danger)",
+                marginBottom: "24px"
+              }}>{error}</div>
+            )}
+
             <div style={{
               background: "var(--surface)",
               borderRadius: "16px",
@@ -146,7 +139,7 @@ export default function Home() {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && investigate()}
-                placeholder="Paste wallet, token, ENS, or contract..."
+                placeholder="Paste wallet address (0x...)"
                 style={{
                   flex: 1,
                   background: "transparent",
@@ -177,7 +170,6 @@ export default function Home() {
               </button>
             </div>
 
-            {/* Loading State */}
             {loading && (
               <div style={{ marginTop: "32px", textAlign: "center" }}>
                 {["Classifying entity", "Checking Smart Money", "Scoring conviction", "Building brief"].map((step, i) => (
@@ -204,7 +196,6 @@ export default function Home() {
               </div>
             )}
 
-            {/* Examples */}
             <div style={{ marginTop: "32px" }}>
               <span style={{ color: "var(--text-muted)", fontSize: "13px" }}>Try:</span>
               <div style={{ display: "flex", gap: "8px", justifyContent: "center", marginTop: "12px", flexWrap: "wrap" }}>
@@ -222,14 +213,6 @@ export default function Home() {
                       cursor: "pointer",
                       transition: "all 0.2s"
                     }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.borderColor = "var(--accent)";
-                      e.currentTarget.style.color = "var(--text-primary)";
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.borderColor = "var(--border-soft)";
-                      e.currentTarget.style.color = "var(--text-secondary)";
-                    }}
                   >
                     {ex.label}
                   </button>
@@ -238,11 +221,9 @@ export default function Home() {
             </div>
           </div>
         ) : (
-          /* Report View */
           <div>
-            {/* Back Button */}
             <button
-              onClick={() => { setReport(null); setInput(""); setShowRaw(false); }}
+              onClick={() => { setReport(null); setInput(""); setShowRaw(false); setError(""); }}
               style={{
                 background: "transparent",
                 border: "1px solid var(--border-soft)",
@@ -257,7 +238,6 @@ export default function Home() {
               ← New Investigation
             </button>
 
-            {/* Entity Header */}
             <div style={{
               background: "var(--surface)",
               borderRadius: "16px",
@@ -274,21 +254,16 @@ export default function Home() {
                   fontSize: "12px",
                   fontWeight: "600",
                   textTransform: "uppercase"
-                }}>
-                  {report.entity.type}
-                </span>
+                }}>{report.entity.type}</span>
               </div>
               <div style={{ 
                 fontFamily: "monospace", 
                 fontSize: "14px",
                 color: "var(--text-secondary)",
                 wordBreak: "break-all"
-              }}>
-                {report.entity.input}
-              </div>
+              }}>{report.entity.input}</div>
             </div>
 
-            {/* Score Card */}
             <div style={{
               background: "var(--surface)",
               borderRadius: "16px",
@@ -310,15 +285,12 @@ export default function Home() {
                 fontWeight: "600",
                 fontSize: "14px",
                 textTransform: "uppercase"
-              }}>
-                {verdictLabel}
-              </div>
+              }}>{verdictLabel}</div>
               <div style={{ marginTop: "12px", color: "var(--text-muted)", fontSize: "14px" }}>
                 Confidence: <span style={{ color: "var(--text-primary)", textTransform: "capitalize" }}>{report.confidence}</span>
               </div>
             </div>
 
-            {/* Summary */}
             <div style={{
               background: "var(--surface)",
               borderRadius: "16px",
@@ -331,38 +303,21 @@ export default function Home() {
               </p>
             </div>
 
-            {/* Bull/Bear Cards */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "16px", marginBottom: "24px" }}>
-              <div style={{
-                background: "var(--surface)",
-                borderRadius: "12px",
-                padding: "20px",
-                borderLeft: "3px solid var(--success)"
-              }}>
-                <div style={{ color: "var(--success)", fontSize: "13px", fontWeight: "600", marginBottom: "12px", textTransform: "uppercase" }}>Bull Case</div>
-                <ul style={{ margin: 0, paddingLeft: "20px", color: "var(--text-secondary)", fontSize: "14px", lineHeight: "1.8" }}>
-                  {report.bull_case.map((item, i) => (
-                    <li key={i}>{item}</li>
-                  ))}
-                </ul>
-              </div>
-
-              <div style={{
-                background: "var(--surface)",
-                borderRadius: "12px",
-                padding: "20px",
-                borderLeft: "3px solid var(--danger)"
-              }}>
-                <div style={{ color: "var(--danger)", fontSize: "13px", fontWeight: "600", marginBottom: "12px", textTransform: "uppercase" }}>Bear Case</div>
-                <ul style={{ margin: 0, paddingLeft: "20px", color: "var(--text-secondary)", fontSize: "14px", lineHeight: "1.8" }}>
-                  {report.bear_case.map((item, i) => (
-                    <li key={i}>{item}</li>
-                  ))}
-                </ul>
-              </div>
+            <div style={{
+              background: "var(--surface)",
+              borderRadius: "12px",
+              padding: "20px",
+              border: "1px solid var(--border-soft)",
+              marginBottom: "24px"
+            }}>
+              <div style={{ color: "var(--text-primary)", fontSize: "14px", fontWeight: "600", marginBottom: "16px" }}>Key Insights</div>
+              <ul style={{ margin: 0, paddingLeft: "20px", color: "var(--text-secondary)", fontSize: "14px", lineHeight: "2" }}>
+                {report.bullets.map((item, i) => (
+                  <li key={i}>{item}</li>
+                ))}
+              </ul>
             </div>
 
-            {/* Risk Flags */}
             <div style={{
               background: "var(--surface)",
               borderRadius: "12px",
@@ -379,15 +334,12 @@ export default function Home() {
                     padding: "6px 12px",
                     borderRadius: "6px",
                     fontSize: "13px"
-                  }}>
-                    {flag}
-                  </span>
+                  }}>{flag}</span>
                 ))}
               </div>
             </div>
 
-            {/* Explorer Links */}
-            {report.cross_chain_evidence.length > 0 && (
+            {report.evidence_links.length > 0 && (
               <div style={{
                 background: "var(--surface)",
                 borderRadius: "12px",
@@ -397,7 +349,7 @@ export default function Home() {
               }}>
                 <div style={{ color: "var(--text-primary)", fontSize: "14px", fontWeight: "600", marginBottom: "16px" }}>Explorer Evidence</div>
                 <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-                  {report.cross_chain_evidence.map((ev, i) => (
+                  {report.evidence_links.map((ev, i) => (
                     <a key={i} href={ev.url} target="_blank" rel="noopener" style={{
                       display: "flex",
                       alignItems: "center",
@@ -406,27 +358,15 @@ export default function Home() {
                       background: "var(--bg-elevated)",
                       borderRadius: "8px",
                       textDecoration: "none",
-                      transition: "all 0.2s"
+                      color: "var(--text-secondary)"
                     }}>
-                      <span style={{ 
-                        background: "var(--accent-glow)", 
-                        color: "var(--accent)",
-                        padding: "4px 8px",
-                        borderRadius: "4px",
-                        fontSize: "11px",
-                        fontWeight: "600",
-                        textTransform: "uppercase"
-                      }}>
-                        {ev.chain}
-                      </span>
-                      <span style={{ color: "var(--text-secondary)", fontSize: "13px" }}>View on Blockscout →</span>
+                      <span style={{ color: "var(--accent)" }}>{ev.label} →</span>
                     </a>
                   ))}
                 </div>
               </div>
             )}
 
-            {/* Raw Data Toggle */}
             <div style={{ marginBottom: "24px" }}>
               <button
                 onClick={() => setShowRaw(!showRaw)}
@@ -456,12 +396,11 @@ export default function Home() {
                   margin: 0,
                   borderTop: "1px solid var(--border-soft)"
                 }}>
-                  {JSON.stringify(report, null, 2)}
+                  {JSON.stringify(report.raw, null, 2)}
                 </pre>
               )}
             </div>
 
-            {/* Footer */}
             <div style={{ textAlign: "center", paddingTop: "32px", borderTop: "1px solid var(--border-soft)" }}>
               <p style={{ color: "var(--text-muted)", fontSize: "13px" }}>
                 Powered by <span style={{ color: "var(--accent)" }}>Nansen CLI</span>

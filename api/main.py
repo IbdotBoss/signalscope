@@ -19,51 +19,123 @@ app.add_middleware(
 class InvestigateRequest(BaseModel):
     input: str
     depth: Optional[str] = "standard"
-    chain_preference: Optional[str] = None
+    chain_preference: Optional[str] = "base"
 
-@app.get("/health")
-def health():
-    return {"status": "ok", "service": "SignalScope"}
+class InvestigateResponse(BaseModel):
+    entity: dict
+    score: int
+    verdict: str
+    confidence: str
+    summary: str
+    bullets: List[str]
+    risk_flags: List[str]
+    evidence_links: List[dict]
+    raw: dict
 
-@app.post("/api/investigate")
-def investigate(req: InvestigateRequest):
-    inp = req.input.strip()
+def classify_entity(raw_input: str):
+    inp = raw_input.strip()
     
-    # Classify input
-    is_wallet = re.match(r'^0x[a-fA-F0-9]{40}$', inp)
-    is_ens = inp.endswith('.eth')
-    is_tx = re.match(r'^0x[a-fA-F0-9]{64}$', inp)
+    # EVM address (0x + 40 hex chars)
+    if re.match(r'^0x[a-fA-F0-9]{40}$', inp):
+        return {"input": inp, "normalized": inp.lower(), "type": "wallet", "is_evm": True}
     
-    if is_wallet:
-        entity_type = "wallet"
-        normalized = inp.lower()
-    elif is_ens:
-        entity_type = "ens"
-        normalized = inp
-    elif is_tx:
-        entity_type = "transaction"
-        normalized = inp
-    else:
-        entity_type = "unknown"
-        normalized = inp
+    # ENS
+    if re.endswith('.eth'):
+        return {"input": inp, "normalized": inp, "type": "ens", "is_evm": True}
     
-    # Run Nansen command
+    return {"input": inp, "normalized": inp, "type": "unknown", "is_evm": False}
+
+def run_nansen_profiler(address: str, chain: str) -> dict:
+    """Get wallet balance/profile from Nansen"""
     try:
-        if entity_type == "wallet":
-            cmd = ["nansen", "research", "profiler", "balance", "--address", normalized, "--chain", req.chain_preference or "base", "--pretty"]
-        else:
-            cmd = ["nansen", "research", "token", "screener", "--chain", req.chain_preference or "base", "--limit", "1", "--pretty"]
-        
+        cmd = ["nansen", "research", "profiler", "balance", "--address", address, "--chain", chain, "--limit", "20"]
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-        nansen_data = result.stdout if result.returncode == 0 else "Nansen query failed"
+        if result.returncode == 0:
+            return json.loads(result.stdout)
+        return {"success": False, "error": result.stderr}
     except Exception as e:
-        nansen_data = f"Error: {str(e)}"
+        return {"success": False, "error": str(e)}
+
+def run_nansen_smart_money(address: str, chain: str) -> dict:
+    """Get Smart Money context"""
+    try:
+        # Try netflow for the address
+        cmd = ["nansen", "research", "smart-money", "netflow", "--chain", chain, "--limit", "10"]
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        if result.returncode == 0:
+            return json.loads(result.stdout)
+        return {"success": False, "error": "No Smart Money data"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+def calculate_score(profiler_data: dict, sm_data: dict) -> tuple:
+    """Calculate conviction score from real Nansen data"""
+    score = 0
+    positives = []
+    negatives = []
+    risk_flags = []
     
-    # Generate mock score for MVP (Nansen integration stub)
-    import hashlib
-    score_seed = int(hashlib.md5(normalized.encode()).hexdigest(), 16)
-    score = (score_seed % 60) + 30  # Score between 30-90
+    # Parse profiler data
+    holdings = []
+    total_value = 0
+    token_count = 0
     
+    if profiler_data.get("success") and "data" in profiler_data:
+        data = profiler_data["data"]
+        if isinstance(data, list):
+            holdings = data
+            token_count = len(holdings)
+            for h in holdings:
+                total_value += h.get("value_usd", 0)
+    
+    # Scoring logic
+    # Smart Money signal (40 pts) - based on activity/quality
+    if sm_data.get("success"):
+        score += 40
+        positives.append("Smart Money activity detected in ecosystem")
+    else:
+        score += 15
+        negatives.append("Limited Smart Money correlation")
+    
+    # Wallet quality (20 pts) - based on holdings diversity
+    if token_count >= 5:
+        score += 20
+        positives.append(f"Diverse portfolio: {token_count} tokens")
+    elif token_count >= 2:
+        score += 15
+        positives.append(f"Moderate diversity: {token_count} tokens")
+    else:
+        score += 5
+        negatives.append("Low token diversity")
+    
+    # Recent activity (20 pts) - placeholder based on data freshness
+    if holdings:
+        score += 20
+        positives.append("Active onchain presence")
+    else:
+        negatives.append("No recent activity data")
+    
+    # Value/quality indicator (10 pts)
+    if total_value > 10000:
+        score += 10
+        positives.append(f"Significant holdings: ${total_value:,.0f}")
+    elif total_value > 1000:
+        score += 5
+    else:
+        risk_flags.append("Low portfolio value")
+    
+    # Risk penalties
+    if token_count == 0:
+        risk_flags.append("No token holdings found")
+        score -= 10
+    
+    if score < 30:
+        risk_flags.append("Low signal strength")
+    
+    # Clamp score
+    score = max(0, min(100, score))
+    
+    # Determine verdict
     if score >= 85:
         verdict = "high_conviction"
         confidence = "high"
@@ -80,28 +152,56 @@ def investigate(req: InvestigateRequest):
         verdict = "avoid"
         confidence = "low"
     
-    # Build response
-    return {
-        "entity": {
-            "input": inp,
-            "normalized": normalized,
-            "type": entity_type
-        },
-        "score": score,
-        "verdict": verdict,
-        "confidence": confidence,
-        "summary": f"This {entity_type} shows {verdict.replace('_', ' ')} characteristics with {confidence} confidence.",
-        "bull_case": ["Smart Money activity detected", "Cross-chain presence confirmed"],
-        "bear_case": ["Evidence is limited", "Signal requires more context"],
-        "risk_flags": ["Standard due diligence required"],
-        "smart_money": {"signal": "moderate" if score > 50 else "weak", "notes": "Net flows indicate activity"},
-        "cross_chain_evidence": [
-            {"chain": "base", "type": "wallet" if entity_type == "wallet" else "token", "url": f"https://base.blockscout.com/address/{normalized}"},
-            {"chain": "ethereum", "type": "wallet" if entity_type == "wallet" else "token", "url": f"https://eth.blockscout.com/address/{normalized}"}
-        ] if is_wallet else [],
-        "sources": [{"label": "Nansen CLI", "type": "nansen"}, {"label": "Blockscout", "type": "blockscout"}],
-        "raw_nansen": nansen_data[:500] + "..." if len(nansen_data) > 500 else nansen_data
-    }
+    return score, verdict, confidence, positives, negatives, risk_flags, holdings
+
+@app.get("/health")
+def health():
+    return {"status": "ok", "service": "SignalScope"}
+
+@app.post("/api/investigate", response_model=InvestigateResponse)
+def investigate(req: InvestigateRequest):
+    # Classify input
+    inp = req.input.strip()
+    
+    # Validate EVM address
+    if not re.match(r'^0x[a-fA-F0-9]{40}$', inp):
+        raise HTTPException(status_code=400, detail="Invalid input. Provide a valid EVM wallet address (0x...).")
+    
+    address = inp.lower()
+    chain = req.chain_preference or "base"
+    
+    # Run Nansen queries
+    profiler = run_nansen_profiler(address, chain)
+    sm_data = run_nansen_smart_money(address, chain)
+    
+    # Calculate score
+    score, verdict, confidence, positives, negatives, risk_flags, holdings = calculate_score(profiler, sm_data)
+    
+    # Build bullets (3 total)
+    bullets = positives[:2] if len(positives) >= 2 else positives + ["Onchain presence confirmed"]
+    if negatives:
+        bullets.append(negatives[0])
+    
+    # Build evidence links
+    evidence = [
+        {"label": f"View on {chain.capitalize()}", "url": f"https://{chain}.blockscout.com/address/{address}"},
+        {"label": "View on Ethereum", "url": f"https://eth.blockscout.com/address/{address}"}
+    ]
+    
+    # Summary
+    summary = f"This wallet shows {verdict.replace('_', ' ')} characteristics with {confidence} confidence based on {len(holdings)} token holdings and ecosystem activity."
+    
+    return InvestigateResponse(
+        entity={"input": inp, "normalized": address, "type": "wallet"},
+        score=score,
+        verdict=verdict,
+        confidence=confidence,
+        summary=summary,
+        bullets=bullets,
+        risk_flags=risk_flags if risk_flags else ["Standard due diligence required"],
+        evidence_links=evidence,
+        raw={"profiler": profiler, "smart_money": sm_data}
+    )
 
 if __name__ == "__main__":
     import uvicorn
