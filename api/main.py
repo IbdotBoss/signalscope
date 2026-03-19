@@ -8,8 +8,8 @@ from collections import OrderedDict
 
 app = Flask(__name__)
 
-# FIXED: CORS - explicit origins
-CORS(app, origins=["https://signalscope.app", "http://localhost:3000", "http://localhost:3001"])
+# FIXED: Allow all origins for now (production should restrict)
+CORS(app, resources={r"/api/*": {"origins": "*"}})
 
 # Cache with size limit (LRU)
 CACHE_TTL = 300
