@@ -4,10 +4,8 @@ services:
     runtime: python
     plan: free
     buildCommand: pip install -r api/requirements.txt && npm install -g @nansenai/nansen-cli
-    startCommand: cd api && uvicorn main:app --host 0.0.0.0 --port $PORT
+    startCommand: cd api && gunicorn main:app -w 1 -b 0.0.0.0:$PORT
     envVars:
       - key: PYTHON_VERSION
         value: "3.11.0"
-      - key: NANSEN_API_KEY
-        sync: false
     healthCheckPath: /health

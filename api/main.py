@@ -1,76 +1,42 @@
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
-from typing import Optional, List, Dict
+from flask import Flask, request, jsonify
+from flask_cors import CORS
 import subprocess
 import json
 import re
 import time
 from collections import OrderedDict
 
-app = FastAPI(title="SignalScope API")
+app = Flask(__name__)
 
-# FIXED: CORS - explicit origins, no wildcard
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["https://signalscope.app", "http://localhost:3000", "http://localhost:3001"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# FIXED: CORS - explicit origins
+CORS(app, origins=["https://signalscope.app", "http://localhost:3000", "http://localhost:3001"])
 
-# FIXED: Cache with size limit (LRU)
-CACHE_TTL = 300  # 5 minutes
+# Cache with size limit (LRU)
+CACHE_TTL = 300
 MAX_CACHE_SIZE = 1000
-_cache: OrderedDict = OrderedDict()
+_cache = OrderedDict()
 
-class InvestigateRequest(BaseModel):
-    input: str = Field(..., max_length=100)
-    depth: Optional[str] = "standard"
-    chain_preference: Optional[str] = "base"
-
-class InvestigateResponse(BaseModel):
-    entity: dict
-    score: int
-    verdict: str
-    confidence: str
-    summary: str
-    bullets: List[str]
-    risk_flags: List[str]
-    evidence_links: List[dict]
-
-# FIXED: Chain allowlist
 ALLOWED_CHAINS = ["ethereum", "base", "arbitrum", "optimism", "polygon", "solana", "avalanche"]
 
-def get_cache(key: str):
+def get_cache(key):
     if key in _cache:
         timestamp, data = _cache[key]
         if time.time() - timestamp < CACHE_TTL:
-            _cache.move_to_end(key)  # LRU: move to end
+            _cache.move_to_end(key)
             return data
         else:
             del _cache[key]
     return None
 
-def set_cache(key: str, data):
-    # LRU eviction
+def set_cache(key, data):
     if key in _cache:
         _cache.move_to_end(key)
     else:
         if len(_cache) >= MAX_CACHE_SIZE:
-            _cache.popitem(last=False)  # Remove oldest
+            _cache.popitem(last=False)
     _cache[key] = (time.time(), data)
 
-def classify_entity(raw_input: str):
-    inp = raw_input.strip()
-    if re.match(r'^0x[a-fA-F0-9]{40}$', inp):
-        return {"input": inp, "normalized": inp.lower(), "type": "wallet", "is_evm": True}
-    if inp.endswith('.eth'):
-        return {"input": inp, "normalized": inp, "type": "ens", "is_evm": True}
-    return {"input": inp, "normalized": inp, "type": "unknown", "is_evm": False}
-
-def run_nansen_profiler(address: str, chain: str) -> dict:
-    """Get wallet balance/profile from Nansen - CACHED"""
+def run_nansen_profiler(address, chain):
     cache_key = f"profiler:{address}:{chain}"
     cached = get_cache(cache_key)
     if cached:
@@ -88,18 +54,15 @@ def run_nansen_profiler(address: str, chain: str) -> dict:
     except Exception as e:
         return {"success": False, "error": str(e)}
 
-def calculate_score(profiler_data: dict) -> tuple:
-    """Calculate conviction score - with null safety"""
+def calculate_score(profiler_data):
     score = 0
     positives = []
     negatives = []
     risk_flags = []
-    
     holdings = []
     total_value = 0
     token_count = 0
     
-    # FIXED: Null safety - handle Nansen API errors
     if not profiler_data:
         return 0, "unknown", "low", ["Unable to fetch data"], ["API error"], ["No data available"], []
     
@@ -121,7 +84,6 @@ def calculate_score(profiler_data: dict) -> tuple:
     for h in holdings:
         total_value += h.get("value_usd", 0)
     
-    # Scoring logic
     if token_count >= 3:
         score += 35
         positives.append("Diverse portfolio indicates active trading")
@@ -174,35 +136,31 @@ def calculate_score(profiler_data: dict) -> tuple:
     
     return score, verdict, confidence, positives, negatives, risk_flags, holdings
 
-@app.get("/health")
+@app.route("/health")
 def health():
-    return {"status": "ok", "service": "SignalScope", "cache_size": len(_cache)}
+    return jsonify({"status": "ok", "service": "SignalScope", "cache_size": len(_cache)})
 
-@app.get("/cache/clear")
+@app.route("/cache/clear", methods=["GET"])
 def clear_cache():
     global _cache
     _cache.clear()
-    return {"status": "cleared", "cache_size": 0}
+    return jsonify({"status": "cleared", "cache_size": 0})
 
-@app.post("/api/investigate", response_model=InvestigateResponse)
-def investigate(req: InvestigateRequest):
-    inp = req.input.strip()
+@app.route("/api/investigate", methods=["POST"])
+def investigate():
+    data = request.get_json()
+    inp = data.get("input", "").strip()
     
-    # Validate input
     if not re.match(r'^0x[a-fA-F0-9]{40}$', inp):
-        raise HTTPException(status_code=400, detail="Invalid input. Provide a valid EVM wallet address (0x...).")
+        return jsonify({"error": "Invalid input. Provide a valid EVM wallet address (0x...)."}), 400
     
     address = inp.lower()
+    chain = (data.get("chain_preference") or "base").lower()
     
-    # FIXED: Validate chain
-    chain = (req.chain_preference or "base").lower()
     if chain not in ALLOWED_CHAINS:
-        raise HTTPException(status_code=400, detail=f"Invalid chain. Allowed: {ALLOWED_CHAINS}")
+        return jsonify({"error": f"Invalid chain. Allowed: {ALLOWED_CHAINS}"}), 400
     
-    # ONE API call - cached
     profiler = run_nansen_profiler(address, chain)
-    
-    # Calculate with null safety
     score, verdict, confidence, positives, negatives, risk_flags, holdings = calculate_score(profiler)
     
     bullets = positives[:2] if len(positives) >= 2 else positives + ["Onchain presence confirmed"]
@@ -216,18 +174,16 @@ def investigate(req: InvestigateRequest):
     
     summary = f"This wallet shows {verdict.replace('_', ' ')} characteristics with {confidence} confidence based on {len(holdings)} token holdings."
     
-    # FIXED: Removed 'raw' field to not leak internal API data
-    return InvestigateResponse(
-        entity={"input": inp, "normalized": address, "type": "wallet"},
-        score=score,
-        verdict=verdict,
-        confidence=confidence,
-        summary=summary,
-        bullets=bullets,
-        risk_flags=risk_flags if risk_flags else ["Standard due diligence required"],
-        evidence_links=evidence
-    )
+    return jsonify({
+        "entity": {"input": inp, "normalized": address, "type": "wallet"},
+        "score": score,
+        "verdict": verdict,
+        "confidence": confidence,
+        "summary": summary,
+        "bullets": bullets,
+        "risk_flags": risk_flags if risk_flags else ["Standard due diligence required"],
+        "evidence_links": evidence
+    })
 
 if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    app.run(host="0.0.0.0", port=8000)
