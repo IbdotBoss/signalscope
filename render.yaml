@@ -9,7 +9,5 @@ services:
       - key: PYTHON_VERSION
         value: "3.11.0"
       - key: NANSEN_API_KEY
-        # IMPORTANT: Set this in Render dashboard as a secret
-        # Value: hfnQ0YaFge2kRvIRs7sTtjy3ry7RCZzU
         sync: false
     healthCheckPath: /health
