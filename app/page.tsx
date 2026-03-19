@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 
 interface Report {
   entity: { input: string; normalized: string; type: string };
@@ -11,7 +11,6 @@ interface Report {
   bullets: string[];
   risk_flags: string[];
   evidence_links: { label: string; url: string }[];
-  raw: any;
 }
 
 const EXAMPLES = [
@@ -19,6 +18,9 @@ const EXAMPLES = [
   { label: "Sample Wallet", value: "0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb" },
   { label: "Base Token", value: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" },
 ];
+
+// FIXED: Use environment variable for API URL with fallback
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 const VERDICT_COLORS: Record<string, string> = {
   avoid: "#FF6B81",
@@ -28,23 +30,35 @@ const VERDICT_COLORS: Record<string, string> = {
   high_conviction: "#4FD1C5",
 };
 
+// FIXED: Input validation regex
+const isValidAddress = (input: string): boolean => {
+  return /^0x[a-fA-F0-9]{40}$/.test(input.trim());
+};
+
 export default function Home() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [report, setReport] = useState<Report | null>(null);
-  const [showRaw, setShowRaw] = useState(false);
   const [error, setError] = useState("");
 
-  const investigate = async () => {
+  const investigate = useCallback(async () => {
     if (!input.trim()) return;
+    
+    // FIXED: Frontend validation before API call
+    if (!isValidAddress(input)) {
+      setError("Invalid address. Use a valid EVM wallet address (0x... with 40 hex chars).");
+      return;
+    }
+    
     setLoading(true);
     setError("");
     
     try {
-      const res = await fetch("http://localhost:8000/api/investigate", {
+      // FIXED: Use env variable for API URL
+      const res = await fetch(`${API_URL}/api/investigate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ input, depth: "standard", chain_preference: "ethereum" }),
+        body: JSON.stringify({ input: input.trim(), depth: "standard", chain_preference: "ethereum" }),
       });
       
       if (!res.ok) {
@@ -58,6 +72,12 @@ export default function Home() {
       setError(e.message || "Failed to analyze. Make sure the API server is running.");
     }
     setLoading(false);
+  }, [input]);
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setInput(e.target.value);
+    // Clear error when user starts typing
+    if (error) setError("");
   };
 
   const verdictLabel = report?.verdict.replace("_", " ").toUpperCase() || "";
@@ -137,7 +157,7 @@ export default function Home() {
               <input
                 type="text"
                 value={input}
-                onChange={(e) => setInput(e.target.value)}
+                onChange={handleInputChange}
                 onKeyDown={(e) => e.key === "Enter" && investigate()}
                 placeholder="Paste wallet address (0x...)"
                 style={{
@@ -223,7 +243,7 @@ export default function Home() {
         ) : (
           <div>
             <button
-              onClick={() => { setReport(null); setInput(""); setShowRaw(false); setError(""); }}
+              onClick={() => { setReport(null); setInput(""); setError(""); }}
               style={{
                 background: "transparent",
                 border: "1px solid var(--border-soft)",
@@ -366,40 +386,6 @@ export default function Home() {
                 </div>
               </div>
             )}
-
-            <div style={{ marginBottom: "24px" }}>
-              <button
-                onClick={() => setShowRaw(!showRaw)}
-                style={{
-                  background: "var(--surface)",
-                  border: "1px solid var(--border-soft)",
-                  borderRadius: "8px",
-                  padding: "12px 16px",
-                  color: "var(--text-secondary)",
-                  fontSize: "14px",
-                  cursor: "pointer",
-                  width: "100%",
-                  textAlign: "left"
-                }}
-              >
-                {showRaw ? "▼" : "▶"} Raw Source Data
-              </button>
-              {showRaw && (
-                <pre style={{
-                  background: "var(--bg-elevated)",
-                  borderRadius: "0 0 8px 8px",
-                  padding: "16px",
-                  fontSize: "12px",
-                  color: "var(--text-secondary)",
-                  overflow: "auto",
-                  maxHeight: "400px",
-                  margin: 0,
-                  borderTop: "1px solid var(--border-soft)"
-                }}>
-                  {JSON.stringify(report.raw, null, 2)}
-                </pre>
-              )}
-            </div>
 
             <div style={{ textAlign: "center", paddingTop: "32px", borderTop: "1px solid var(--border-soft)" }}>
               <p style={{ color: "var(--text-muted)", fontSize: "13px" }}>
