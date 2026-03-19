@@ -1,31 +1,31 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional, List, Dict
 import subprocess
 import json
 import re
-import hashlib
-from functools import lru_cache
 import time
+from collections import OrderedDict
 
 app = FastAPI(title="SignalScope API")
 
+# FIXED: CORS - explicit origins, no wildcard
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["https://signalscope.app", "http://localhost:3000", "http://localhost:3001"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Simple in-memory cache: address -> (timestamp, data)
-# Cache for 5 minutes to save Nansen credits
+# FIXED: Cache with size limit (LRU)
 CACHE_TTL = 300  # 5 minutes
-_cache: Dict[str, tuple] = {}
+MAX_CACHE_SIZE = 1000
+_cache: OrderedDict = OrderedDict()
 
 class InvestigateRequest(BaseModel):
-    input: str
+    input: str = Field(..., max_length=100)
     depth: Optional[str] = "standard"
     chain_preference: Optional[str] = "base"
 
@@ -38,16 +38,27 @@ class InvestigateResponse(BaseModel):
     bullets: List[str]
     risk_flags: List[str]
     evidence_links: List[dict]
-    raw: dict
+
+# FIXED: Chain allowlist
+ALLOWED_CHAINS = ["ethereum", "base", "arbitrum", "optimism", "polygon", "solana", "avalanche"]
 
 def get_cache(key: str):
     if key in _cache:
         timestamp, data = _cache[key]
         if time.time() - timestamp < CACHE_TTL:
+            _cache.move_to_end(key)  # LRU: move to end
             return data
+        else:
+            del _cache[key]
     return None
 
 def set_cache(key: str, data):
+    # LRU eviction
+    if key in _cache:
+        _cache.move_to_end(key)
+    else:
+        if len(_cache) >= MAX_CACHE_SIZE:
+            _cache.popitem(last=False)  # Remove oldest
     _cache[key] = (time.time(), data)
 
 def classify_entity(raw_input: str):
@@ -78,7 +89,7 @@ def run_nansen_profiler(address: str, chain: str) -> dict:
         return {"success": False, "error": str(e)}
 
 def calculate_score(profiler_data: dict) -> tuple:
-    """Calculate conviction score - NO extra Nansen calls"""
+    """Calculate conviction score - with null safety"""
     score = 0
     positives = []
     negatives = []
@@ -88,24 +99,33 @@ def calculate_score(profiler_data: dict) -> tuple:
     total_value = 0
     token_count = 0
     
-    if profiler_data.get("success") and "data" in profiler_data:
-        data = profiler_data["data"]
-        if isinstance(data, dict) and "data" in data:
-            holdings = data["data"]
-        elif isinstance(data, list):
-            holdings = data
-        
-        token_count = len(holdings)
-        for h in holdings:
-            total_value += h.get("value_usd", 0)
+    # FIXED: Null safety - handle Nansen API errors
+    if not profiler_data:
+        return 0, "unknown", "low", ["Unable to fetch data"], ["API error"], ["No data available"], []
     
-    # Scoring - simplified to use ONLY profiler data (saves credits)
-    # Smart Money signal (40 pts) - inferred from holdings quality
+    if not profiler_data.get("success"):
+        return 0, "unknown", "low", ["API returned error"], [profiler_data.get("error", "Unknown")], ["No data available"], []
+    
+    data = profiler_data.get("data")
+    if not data:
+        return 0, "unknown", "low", ["No data returned"], ["Empty response"], ["No data available"], []
+    
+    if isinstance(data, dict) and "data" in data:
+        holdings = data["data"]
+    elif isinstance(data, list):
+        holdings = data
+    else:
+        return 0, "unknown", "low", ["Unexpected data format"], ["Invalid structure"], ["No data available"], []
+    
+    token_count = len(holdings)
+    for h in holdings:
+        total_value += h.get("value_usd", 0)
+    
+    # Scoring logic
     if token_count >= 3:
         score += 35
         positives.append("Diverse portfolio indicates active trading")
     
-    # Wallet quality (30 pts) - based on holdings diversity
     if token_count >= 5:
         score += 30
         positives.append(f"Strong diversification: {token_count} tokens")
@@ -116,14 +136,12 @@ def calculate_score(profiler_data: dict) -> tuple:
         score += 5
         negatives.append("Limited token diversity")
     
-    # Recent activity (20 pts)
     if holdings and total_value > 0:
         score += 20
         positives.append("Active onchain presence")
     else:
         negatives.append("No significant activity")
     
-    # Value indicator (10 pts)
     if total_value > 10000:
         score += 10
         positives.append(f"Substantial holdings: ${total_value:,.0f}")
@@ -132,14 +150,12 @@ def calculate_score(profiler_data: dict) -> tuple:
     else:
         risk_flags.append("Low portfolio value")
     
-    # Penalties
     if token_count == 0:
         risk_flags.append("No token holdings found")
         score -= 15
     
     score = max(0, min(100, score))
     
-    # Verdict
     if score >= 85:
         verdict = "high_conviction"
         confidence = "high"
@@ -160,28 +176,33 @@ def calculate_score(profiler_data: dict) -> tuple:
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "service": "SignalScope", "credits": "Check Nansen dashboard"}
+    return {"status": "ok", "service": "SignalScope", "cache_size": len(_cache)}
 
 @app.get("/cache/clear")
 def clear_cache():
     global _cache
     _cache.clear()
-    return {"status": "cleared"}
+    return {"status": "cleared", "cache_size": 0}
 
 @app.post("/api/investigate", response_model=InvestigateResponse)
 def investigate(req: InvestigateRequest):
     inp = req.input.strip()
     
+    # Validate input
     if not re.match(r'^0x[a-fA-F0-9]{40}$', inp):
         raise HTTPException(status_code=400, detail="Invalid input. Provide a valid EVM wallet address (0x...).")
     
     address = inp.lower()
-    chain = req.chain_preference or "base"
     
-    # ONE API call only (profiler balance) - cached for 5 min
+    # FIXED: Validate chain
+    chain = (req.chain_preference or "base").lower()
+    if chain not in ALLOWED_CHAINS:
+        raise HTTPException(status_code=400, detail=f"Invalid chain. Allowed: {ALLOWED_CHAINS}")
+    
+    # ONE API call - cached
     profiler = run_nansen_profiler(address, chain)
     
-    # Calculate score from single call
+    # Calculate with null safety
     score, verdict, confidence, positives, negatives, risk_flags, holdings = calculate_score(profiler)
     
     bullets = positives[:2] if len(positives) >= 2 else positives + ["Onchain presence confirmed"]
@@ -195,6 +216,7 @@ def investigate(req: InvestigateRequest):
     
     summary = f"This wallet shows {verdict.replace('_', ' ')} characteristics with {confidence} confidence based on {len(holdings)} token holdings."
     
+    # FIXED: Removed 'raw' field to not leak internal API data
     return InvestigateResponse(
         entity={"input": inp, "normalized": address, "type": "wallet"},
         score=score,
@@ -203,8 +225,7 @@ def investigate(req: InvestigateRequest):
         summary=summary,
         bullets=bullets,
         risk_flags=risk_flags if risk_flags else ["Standard due diligence required"],
-        evidence_links=evidence,
-        raw={"profiler": profiler}
+        evidence_links=evidence
     )
 
 if __name__ == "__main__":
