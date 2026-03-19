@@ -3,7 +3,7 @@ services:
     name: signalscope-api
     runtime: python
     plan: free
-    buildCommand: pip install -r api/requirements.txt && npm install -g @nansenai/nansen-cli
+    buildCommand: pip install -r api/requirements.txt && npm install -g nansen-cli
     startCommand: cd api && gunicorn main:app -w 1 -b 0.0.0.0:$PORT
     envVars:
       - key: PYTHON_VERSION
