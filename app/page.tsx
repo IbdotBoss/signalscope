@@ -1,14 +1,18 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { 
   MagnifyingGlass, 
   ArrowRight, 
-  Shield, 
+  Shield,
   Lightning,
-  ChartLine,
+  Eye,
+  Target,
+  Warning,
+  Check,
   X,
-  Circle
+  ArrowUpRight,
+  Wallet
 } from "@phosphor-icons/react";
 
 interface Report {
@@ -24,26 +28,96 @@ interface Report {
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
-const VERDICT_CONFIG: Record<string, { color: string; label: string }> = {
-  avoid: { color: "#F87171", label: "Avoid" },
-  weak: { color: "#FBBF24", label: "Weak" },
-  watchlist: { color: "#60A5FA", label: "Watchlist" },
-  strong: { color: "#4ADE80", label: "Strong" },
-  high_conviction: { color: "#A78BFA", label: "High Conviction" },
+const VERDICT_CONFIG: Record<string, { color: string; label: string; bg: string }> = {
+  avoid: { color: "#EF4444", bg: "rgba(239,68,68,0.15)", label: "AVOID" },
+  weak: { color: "#FBBF24", bg: "rgba(251,191,36,0.15)", label: "WEAK" },
+  watchlist: { color: "#60A5FA", bg: "rgba(96,165,250,0.15)", label: "WATCHLIST" },
+  strong: { color: "#22C55E", bg: "rgba(34,197,94,0.15)", label: "STRONG" },
+  high_conviction: { color: "#FF6B35", bg: "rgba(255,107,53,0.15)", label: "HIGH CONFIDENCE" },
 };
 
 const isValidAddress = (input: string): boolean => /^0x[a-fA-F0-9]{40}$/.test(input.trim());
+
+// Orb component for visual interest
+function IntelOrb() {
+  return (
+    <div style={{ position: "relative", width: "100%", aspectRatio: "1" }}>
+      {/* Outer ring */}
+      <div style={{
+        position: "absolute",
+        inset: 0,
+        border: "1px solid var(--border-soft)",
+        borderRadius: "50%",
+      }} />
+      {/* Middle ring */}
+      <div style={{
+        position: "absolute",
+        inset: "15%",
+        border: "1px solid rgba(255,107,53,0.2)",
+        borderRadius: "50%",
+        animation: "spin 20s linear infinite",
+      }} />
+      {/* Inner ring */}
+      <div style={{
+        position: "absolute",
+        inset: "30%",
+        border: "1px solid rgba(255,107,53,0.3)",
+        borderRadius: "50%",
+        animation: "spin 12s linear infinite reverse",
+      }} />
+      {/* Core */}
+      <div style={{
+        position: "absolute",
+        top: "50%",
+        left: "50%",
+        transform: "translate(-50%, -50%)",
+        width: "25%",
+        height: "25%",
+        background: "var(--accent)",
+        borderRadius: "50%",
+        boxShadow: "0 0 40px var(--accent-subtle), 0 0 80px var(--accent-subtle)",
+        animation: "pulse-glow 3s ease-in-out infinite",
+      }} />
+      {/* Crosshairs */}
+      <div style={{
+        position: "absolute",
+        top: "50%",
+        left: "50%",
+        transform: "translate(-50%, -50%)",
+        width: "60%",
+        height: "60%",
+        borderLeft: "1px solid rgba(255,107,53,0.15)",
+        borderRight: "1px solid rgba(255,107,53,0.15)",
+        borderTop: "1px solid rgba(255,107,53,0.15)",
+        borderBottom: "1px solid rgba(255,107,53,0.15)",
+      }} />
+    </div>
+  );
+}
 
 export default function Home() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [report, setReport] = useState<Report | null>(null);
   const [error, setError] = useState("");
+  const [phase, setPhase] = useState(0);
+
+  // Typing effect for loading
+  useEffect(() => {
+    if (loading) {
+      const interval = setInterval(() => {
+        setPhase(p => (p + 1) % 4);
+      }, 800);
+      return () => clearInterval(interval);
+    } else {
+      setPhase(0);
+    }
+  }, [loading]);
 
   const investigate = useCallback(async () => {
     if (!input.trim()) return;
     if (!isValidAddress(input)) {
-      setError("Enter a valid EVM address (0x... with 40 hex chars)");
+      setError("Enter a valid EVM address");
       return;
     }
     
@@ -57,11 +131,11 @@ export default function Home() {
         body: JSON.stringify({ input: input.trim(), chain_preference: "ethereum" }),
       });
       
-      if (!res.ok) throw new Error("Analysis failed");
+      if (!res.ok) throw new Error();
       const data = await res.json();
       setReport(data);
     } catch {
-      setError("Something went wrong. Check the API is running.");
+      setError("Analysis failed. API may be down.");
     }
     setLoading(false);
   }, [input]);
@@ -69,74 +143,72 @@ export default function Home() {
   const reset = () => { setReport(null); setInput(""); setError(""); };
 
   const verdict = report ? VERDICT_CONFIG[report.verdict] : null;
+  const loadingSteps = ["Mapping wallets", "Tracking Smart Money", "Scoring conviction", "Building intel"];
 
   return (
-    <main style={{ minHeight: "100vh", background: "var(--bg)", position: "relative", overflow: "hidden" }}>
-      {/* Subtle background gradient */}
+    <main style={{ minHeight: "100vh", background: "var(--bg)", position: "relative" }}>
+      {/* Ambient glow */}
       <div style={{
         position: "fixed",
-        top: "-50%",
-        right: "-20%",
-        width: "80%",
-        height: "100%",
-        background: "radial-gradient(ellipse, var(--accent-subtle) 0%, transparent 70%)",
+        top: "-30%",
+        left: "-10%",
+        width: "60%",
+        height: "60%",
+        background: "radial-gradient(ellipse, var(--accent-subtle) 0%, transparent 60%)",
         pointerEvents: "none",
       }} />
 
-      {/* Header - asymmetric, minimal */}
+      {/* Header */}
       <header style={{
-        padding: "28px 48px",
+        padding: "24px 48px",
         display: "flex",
         alignItems: "center",
         justifyContent: "space-between",
         borderBottom: "1px solid var(--border-soft)",
       }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
           <div style={{
-            width: "36px",
-            height: "36px",
-            borderRadius: "10px",
+            width: "32px",
+            height: "32px",
+            borderRadius: "8px",
             background: "var(--accent)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
           }}>
-            <Shield size={20} weight="bold" color="var(--bg)" />
+            <Shield size={18} weight="fill" color="var(--bg)" />
           </div>
-          <span style={{ fontSize: "17px", fontWeight: "600", letterSpacing: "-0.02em" }}>
+          <span className="headline" style={{ fontSize: "16px", fontWeight: "600" }}>
             SignalScope
           </span>
         </div>
-        <a 
-          href="/api-and-skill" 
-          style={{ 
-            color: "var(--text-muted)", 
-            textDecoration: "none", 
-            fontSize: "14px",
-            display: "flex",
-            alignItems: "center",
-            gap: "6px",
-          }}
-        >
-          API docs <ArrowRight size={14} />
-        </a>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", color: "var(--text-muted)" }}>
+          <span style={{ 
+            width: "6px", 
+            height: "6px", 
+            borderRadius: "50%", 
+            background: "var(--success)",
+            boxShadow: "0 0 8px var(--success)"
+          }} />
+          Nansen connected
+        </div>
       </header>
 
-      {/* Main content - asymmetric layout */}
+      {/* Main */}
       <div style={{ 
-        maxWidth: "1200px", 
+        maxWidth: "1100px", 
         margin: "0 auto", 
-        padding: "80px 48px",
+        padding: "60px 48px",
         display: "grid",
-        gridTemplateColumns: "1fr 1fr",
+        gridTemplateColumns: "1.2fr 0.8fr",
         gap: "80px",
         alignItems: "start",
       }}>
-        {/* Left column - text content */}
+        {/* Left - narrative */}
         <div>
           {!report ? (
             <>
-              {/* Label */}
+              {/* Tagline - narrative voice */}
               <div style={{
                 display: "inline-flex",
                 alignItems: "center",
@@ -146,97 +218,104 @@ export default function Home() {
                 borderRadius: "100px",
                 fontSize: "12px",
                 color: "var(--text-secondary)",
-                marginBottom: "28px",
+                marginBottom: "24px",
                 border: "1px solid var(--border-soft)",
               }}>
                 <Lightning size={14} weight="fill" color="var(--accent)" />
-                Wallet Intelligence
+                <span className="headline">Smart Money Intelligence</span>
               </div>
 
-              {/* Headline - not screaming, controlled hierarchy */}
-              <h1 style={{ 
-                fontSize: "clamp(32px, 4vw, 44px)", 
+              {/* Headline - tells the story */}
+              <h1 className="headline" style={{ 
+                fontSize: "clamp(36px, 5vw, 52px)", 
                 fontWeight: "600", 
                 color: "var(--text-primary)",
                 marginBottom: "20px",
-                lineHeight: "1.15",
+                lineHeight: "1.1",
                 letterSpacing: "-0.03em",
               }}>
-                Know the wallet before you ape in
+                See what the whales see<span style={{ color: "var(--accent)" }>.</span>
               </h1>
 
-              {/* Subtext - no filler */}
+              {/* Story */}
               <p style={{ 
                 fontSize: "16px", 
                 color: "var(--text-secondary)",
-                marginBottom: "48px",
-                lineHeight: "1.65",
-                maxWidth: "400px",
+                marginBottom: "40px",
+                lineHeight: "1.7",
+                maxWidth: "420px",
               }}>
-                Nansen-powered conviction scores. Smart Money tracking. One search.
+                Before you ape in, check if Smart Money already moved. 
+                SignalScope reads wallet conviction from Nansen's chain data — 
+                so you know if you're early or just copying a dump.
               </p>
 
-              {/* Input - not centered, left aligned */}
-              <div style={{ position: "relative" }}>
+              {/* Input */}
+              <div style={{ position: "relative", marginBottom: "28px" }}>
                 <div style={{
                   display: "flex",
                   alignItems: "center",
                   gap: "12px",
                   background: "var(--surface)",
-                  borderRadius: "14px",
+                  borderRadius: "12px",
                   padding: "6px 6px 6px 20px",
-                  border: "1px solid var(--border-soft)",
-                  transition: "border-color 0.2s",
+                  border: `1px solid ${error ? "var(--danger)" : "var(--border-soft)"}`,
                 }}>
-                  <MagnifyingGlass size={18} color="var(--text-muted)" />
+                  <Wallet size={18} color="var(--text-muted)" />
                   <input
                     type="text"
                     value={input}
                     onChange={(e) => { setInput(e.target.value); if (error) setError(""); }}
                     onKeyDown={(e) => e.key === "Enter" && investigate()}
-                    placeholder="0x742d35Cc6634C0532..."
+                    placeholder="0xd8dA6BF26964aF9D7..."
                     style={{
                       flex: 1,
                       background: "transparent",
                       border: "none",
                       padding: "14px 0",
                       color: "var(--text-primary)",
-                      fontSize: "15px",
+                      fontSize: "14px",
+                      fontFamily: "ui-monospace, monospace",
                       outline: "none",
-                      fontFamily: "inherit",
                     }}
                   />
                   <button
                     onClick={investigate}
                     disabled={loading || !input.trim()}
-                    className="spring-btn"
+                    className="spring"
                     style={{
                       background: input.trim() && !loading ? "var(--accent)" : "var(--surface-hover)",
                       color: input.trim() && !loading ? "var(--bg)" : "var(--text-muted)",
                       border: "none",
                       borderRadius: "10px",
-                      padding: "14px 24px",
+                      padding: "12px 24px",
                       fontSize: "14px",
                       fontWeight: "500",
                       cursor: loading ? "not-allowed" : "pointer",
                       display: "flex",
                       alignItems: "center",
                       gap: "8px",
+                      fontFamily: "inherit",
                     }}
                   >
                     {loading ? (
                       <>
-                        <div style={{
-                          width: "16px",
-                          height: "16px",
-                          border: "2px solid transparent",
+                        <span style={{ 
+                          width: "14px", 
+                          height: "14px", 
+                          border: "2px solid transparent", 
                           borderTopColor: "currentColor",
                           borderRadius: "50%",
-                          animation: "spin 0.8s linear infinite",
+                          animation: "spin 0.8s linear infinite"
                         }} />
-                        Analyzing
+                        <span className="headline">{loadingSteps[phase]}...</span>
                       </>
-                    ) : "Investigate"}
+                    ) : (
+                      <>
+                        <MagnifyingGlass size={16} weight="bold" />
+                        <span className="headline">Investigate</span>
+                      </>
+                    )}
                   </button>
                 </div>
 
@@ -244,7 +323,7 @@ export default function Home() {
                   <p style={{ 
                     color: "var(--danger)", 
                     fontSize: "13px", 
-                    marginTop: "12px",
+                    marginTop: "10px",
                     display: "flex",
                     alignItems: "center",
                     gap: "6px",
@@ -254,16 +333,16 @@ export default function Home() {
                 )}
               </div>
 
-              {/* Quick examples - subtle */}
-              <div style={{ marginTop: "32px", display: "flex", gap: "10px", flexWrap: "wrap" }}>
+              {/* Quick picks */}
+              <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
                 {[
                   { label: "vitalik.eth", addr: "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045" },
                   { label: "Base deployer", addr: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" },
                 ].map((ex) => (
                   <button
                     key={ex.label}
-                    onClick={() => { setInput(ex.addr); }}
-                    className="spring-btn"
+                    onClick={() => setInput(ex.addr)}
+                    className="spring"
                     style={{
                       background: "var(--surface)",
                       border: "1px solid var(--border-soft)",
@@ -280,11 +359,11 @@ export default function Home() {
               </div>
             </>
           ) : (
-            /* Report view */
+            /* Report */
             <div>
               <button
                 onClick={reset}
-                className="spring-btn"
+                className="spring"
                 style={{
                   background: "transparent",
                   border: "1px solid var(--border-soft)",
@@ -293,7 +372,7 @@ export default function Home() {
                   color: "var(--text-secondary)",
                   fontSize: "14px",
                   cursor: "pointer",
-                  marginBottom: "40px",
+                  marginBottom: "36px",
                   display: "flex",
                   alignItems: "center",
                   gap: "8px",
@@ -303,34 +382,28 @@ export default function Home() {
                 New search
               </button>
 
-              {/* Entity info */}
-              <div style={{ marginBottom: "32px" }}>
-                <p style={{ fontSize: "12px", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "8px" }}>
-                  Wallet
-                </p>
-                <p style={{ 
-                  fontFamily: "var(--font-mono)", 
-                  fontSize: "13px",
-                  color: "var(--text-secondary)",
-                  wordBreak: "break-all",
-                  background: "var(--surface)",
-                  padding: "16px",
-                  borderRadius: "10px",
-                  border: "1px solid var(--border-soft)",
-                }}>
-                  {report.entity.input}
-                </p>
-              </div>
-
-              {/* Score - big but not screaming */}
-              <div style={{ 
-                display: "flex", 
-                alignItems: "baseline", 
-                gap: "16px",
-                marginBottom: "16px",
+              {/* Entity */}
+              <p style={{ fontSize: "11px", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "8px" }}>
+                Wallet Intel
+              </p>
+              <p style={{ 
+                fontFamily: "ui-monospace, monospace", 
+                fontSize: "13px",
+                color: "var(--text-secondary)",
+                wordBreak: "break-all",
+                background: "var(--surface)",
+                padding: "14px",
+                borderRadius: "8px",
+                border: "1px solid var(--border-soft)",
+                marginBottom: "32px",
               }}>
-                <span style={{ 
-                  fontSize: "72px", 
+                {report.entity.input}
+              </p>
+
+              {/* Score */}
+              <div style={{ display: "flex", alignItems: "baseline", gap: "20px", marginBottom: "24px" }}>
+                <span className="headline" style={{ 
+                  fontSize: "80px", 
                   fontWeight: "700", 
                   color: verdict?.color,
                   lineHeight: 1,
@@ -341,14 +414,17 @@ export default function Home() {
                 <div>
                   <span style={{
                     display: "inline-block",
-                    padding: "4px 12px",
+                    padding: "6px 14px",
                     borderRadius: "6px",
-                    background: `${verdict?.color}20`,
+                    background: verdict?.bg,
                     color: verdict?.color,
                     fontSize: "13px",
                     fontWeight: "600",
-                    marginBottom: "4px",
-                  }}>
+                    marginBottom: "6px",
+                    fontFamily: "inherit",
+                  }}
+                  className="headline"
+                  >
                     {verdict?.label}
                   </span>
                   <p style={{ fontSize: "13px", color: "var(--text-muted)" }}>
@@ -358,32 +434,30 @@ export default function Home() {
               </div>
 
               {/* Summary */}
-              <p style={{ fontSize: "15px", color: "var(--text-secondary)", lineHeight: "1.7", marginBottom: "32px" }}>
+              <p style={{ fontSize: "15px", color: "var(--text-secondary)", lineHeight: "1.75", marginBottom: "28px" }}>
                 {report.summary}
               </p>
 
-              {/* Bullets */}
-              <div style={{ marginBottom: "32px" }}>
-                <p style={{ fontSize: "12px", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "16px" }}>
-                  Key Insights
-                </p>
-                <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: "12px" }}>
-                  {report.bullets.map((item, i) => (
-                    <li key={i} style={{ 
-                      display: "flex", 
-                      alignItems: "flex-start", 
-                      gap: "12px",
-                      fontSize: "14px",
-                      color: "var(--text-secondary)",
-                    }}>
-                      <Circle size={8} weight="fill" color="var(--accent)" style={{ marginTop: "6px", flexShrink: 0 }} />
-                      {item}
-                    </li>
-                  ))}
-                </ul>
-              </div>
+              {/* Insights */}
+              <p style={{ fontSize: "11px", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "14px" }}>
+                Intel
+              </p>
+              <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: "10px", marginBottom: "28px" }}>
+                {report.bullets.map((item, i) => (
+                  <li key={i} style={{ 
+                    display: "flex", 
+                    alignItems: "flex-start", 
+                    gap: "12px",
+                    fontSize: "14px",
+                    color: "var(--text-secondary)",
+                  }}>
+                    <Check size={16} weight="bold" color="var(--success)" style={{ marginTop: "2px", flexShrink: 0 }} />
+                    {item}
+                  </li>
+                ))}
+              </ul>
 
-              {/* Risk flags */}
+              {/* Risks */}
               {report.risk_flags.length > 0 && (
                 <div style={{ 
                   background: "var(--surface)", 
@@ -391,8 +465,8 @@ export default function Home() {
                   borderRadius: "10px",
                   border: "1px solid var(--border-soft)",
                 }}>
-                  <p style={{ fontSize: "12px", color: "var(--warning)", fontWeight: "600", marginBottom: "12px" }}>
-                    Risk Flags
+                  <p style={{ fontSize: "11px", color: "var(--warning)", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "12px" }}>
+                    ⚠ Warnings
                   </p>
                   <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
                     {report.risk_flags.map((flag, i) => (
@@ -413,140 +487,94 @@ export default function Home() {
           )}
         </div>
 
-        {/* Right column - visual element, asymmetric */}
-        {!report && (
-          <div style={{ 
-            display: "flex", 
-            flexDirection: "column", 
-            gap: "24px",
-            paddingTop: "60px",
-          }}>
-            {/* Abstract visual - not generic illustration */}
-            <div style={{
-              position: "relative",
-              width: "100%",
-              aspectRatio: "1",
-              background: "var(--surface)",
-              borderRadius: "20px",
-              border: "1px solid var(--border-soft)",
-              overflow: "hidden",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}>
-              {/* Abstract pattern */}
-              <div style={{
-                position: "absolute",
-                inset: 0,
-                background: `
-                  radial-gradient(circle at 30% 40%, var(--accent-subtle) 0%, transparent 50%),
-                  radial-gradient(circle at 70% 60%, rgba(167,139,250,0.08) 0%, transparent 40%)
-                `,
-              }} />
-              <div style={{
-                width: "60%",
-                height: "60%",
-                border: "1px solid var(--border-soft)",
-                borderRadius: "50%",
-                position: "relative",
-              }}>
-                <div style={{
-                  position: "absolute",
-                  top: "50%",
-                  left: "50%",
-                  transform: "translate(-50%, -50%)",
-                  width: "40%",
-                  height: "40%",
-                  border: "1px solid var(--accent)",
-                  borderRadius: "50%",
-                  opacity: 0.6,
-                }} />
-                {/* Animated dot */}
-                <div style={{
-                  position: "absolute",
-                  top: "20%",
-                  left: "50%",
-                  transform: "translate(-50%, -50%)",
-                  width: "8px",
-                  height: "8px",
-                  background: "var(--accent)",
-                  borderRadius: "50%",
-                  boxShadow: "0 0 20px var(--accent)",
-                  animation: "subtle-pulse 2s ease-in-out infinite",
-                }} />
-              </div>
-            </div>
-
-            {/* Stats - organic numbers */}
-            <div style={{
-              display: "grid",
-              gridTemplateColumns: "1fr 1fr",
-              gap: "12px",
-            }}>
-              {[
-                { label: "Chains", value: "7+" },
-                { label: "Data points", value: "847K" },
-              ].map((stat) => (
-                <div key={stat.label} style={{
-                  background: "var(--surface)",
-                  padding: "20px",
-                  borderRadius: "12px",
-                  border: "1px solid var(--border-soft)",
-                }}>
-                  <p style={{ fontSize: "24px", fontWeight: "600", color: "var(--text-primary)", marginBottom: "4px" }}>
-                    {stat.value}
-                  </p>
-                  <p style={{ fontSize: "13px", color: "var(--text-muted)" }}>
-                    {stat.label}
-                  </p>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Report view - right column for evidence */}
-        {report && (
-          <div style={{ paddingTop: "80px" }}>
-            <p style={{ fontSize: "12px", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "16px" }}>
-              Evidence
-            </p>
-            <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-              {report.evidence_links.map((ev, i) => (
-                <a
-                  key={i}
-                  href={ev.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="spring-btn"
-                  style={{
+        {/* Right - visual */}
+        <div style={{ paddingTop: !report ? "40px" : "80px" }}>
+          {!report ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+              <IntelOrb />
+              
+              {/* Value props with personality */}
+              <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                {[
+                  { icon: Eye, title: "Track Smart Money", desc: "See where whales move before the crowd" },
+                  { icon: Target, title: "Conviction Scoring", desc: "Data-driven wallet reliability scores" },
+                  { icon: Lightning, title: "Seconds, Not Hours", desc: "Instant intel on any EVM address" },
+                ].map(({ icon: Icon, title, desc }) => (
+                  <div key={title} style={{
                     display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    padding: "16px 20px",
+                    gap: "14px",
+                    padding: "16px",
                     background: "var(--surface)",
                     borderRadius: "10px",
                     border: "1px solid var(--border-soft)",
-                    textDecoration: "none",
-                    color: "var(--text-primary)",
-                  }}
-                >
-                  <span style={{ fontSize: "14px" }}>{ev.label}</span>
-                  <ArrowRight size={16} color="var(--text-muted)" />
-                </a>
-              ))}
+                  }}>
+                    <div style={{
+                      width: "36px",
+                      height: "36px",
+                      borderRadius: "8px",
+                      background: "var(--accent-subtle)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      flexShrink: 0,
+                    }}>
+                      <Icon size={18} color="var(--accent)" weight="bold" />
+                    </div>
+                    <div>
+                      <p className="headline" style={{ fontSize: "14px", fontWeight: "600", color: "var(--text-primary)", marginBottom: "4px" }}>
+                        {title}
+                      </p>
+                      <p style={{ fontSize: "13px", color: "var(--text-muted)", lineHeight: "1.5" }}>
+                        {desc}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
-        )}
+          ) : (
+            /* Evidence */
+            <div style={{ paddingTop: "20px" }}>
+              <p style={{ fontSize: "11px", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "14px" }}>
+                Evidence
+              </p>
+              <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                {report.evidence_links.map((ev, i) => (
+                  <a
+                    key={i}
+                    href={ev.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="spring"
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      padding: "16px",
+                      background: "var(--surface)",
+                      borderRadius: "10px",
+                      border: "1px solid var(--border-soft)",
+                      textDecoration: "none",
+                      color: "var(--text-primary)",
+                    }}
+                  >
+                    <span style={{ fontSize: "14px" }}>{ev.label}</span>
+                    <ArrowUpRight size={16} color="var(--text-muted)" />
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Footer - minimal */}
+      {/* Footer */}
       <footer style={{
         position: "fixed",
         bottom: 0,
         left: 0,
         right: 0,
-        padding: "20px 48px",
+        padding: "16px 48px",
         borderTop: "1px solid var(--border-soft)",
         background: "var(--bg)",
         display: "flex",
@@ -555,15 +583,10 @@ export default function Home() {
         fontSize: "12px",
         color: "var(--text-muted)",
       }}>
-        <span>Nansen CLI powered</span>
-        <a 
-          href="https://twitter.com/intent/follow?screen_name=signalscope" 
-          target="_blank"
-          rel="noopener"
-          style={{ color: "var(--text-muted)", textDecoration: "none" }}
-        >
-          @signalscope
-        </a>
+        <span>Powered by Nansen CLI</span>
+        <span style={{ fontFamily: "ui-monospace, monospace", fontSize: "11px" }}>
+          v1.0.0
+        </span>
       </footer>
 
       <style>{`
