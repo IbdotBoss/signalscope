@@ -1,22 +1,27 @@
 @import "tailwindcss";
 
+/* Import Geist fonts */
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Geist+Mono:wght@400;500&display=swap');
+
 :root {
-  --bg: #0B0F14;
-  --bg-elevated: #101722;
-  --surface: #121A26;
-  --surface-elevated: #172231;
-  --surface-hover: #1C293A;
-  --border-soft: rgba(255,255,255,0.08);
-  --border-strong: rgba(148,163,184,0.22);
-  --text-primary: #F3F7FB;
-  --text-secondary: #A8B3C2;
-  --text-muted: #7B8796;
-  --accent: #4FD1C5;
-  --accent-strong: #24B7C9;
-  --accent-glow: rgba(79,209,197,0.18);
-  --success: #33D17A;
-  --warning: #F5B942;
-  --danger: #FF6B81;
+  /* Warmer dark palette - not pure black */
+  --bg: #0D0D0F;
+  --bg-elevated: #161619;
+  --surface: #1C1C21;
+  --surface-hover: #242429;
+  --border-soft: rgba(255,255,255,0.06);
+  --border-strong: rgba(255,255,255,0.12);
+  --text-primary: #FAFAFA;
+  --text-secondary: #A1A1AA;
+  --text-muted: #71717A;
+  /* Single accent - desaturated cyan */
+  --accent: #6B8A8A;
+  --accent-hover: #7A9A9A;
+  --accent-subtle: rgba(107,138,138,0.15);
+  --success: #4ADE80;
+  --warning: #FBBF24;
+  --danger: #F87171;
 }
 
 * {
@@ -26,15 +31,51 @@
 html {
   background: var(--bg);
   color: var(--text-primary);
+  font-family: 'Geist', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
 
 body {
-  font-family: system-ui, -apple-system, sans-serif;
   background: var(--bg);
   color: var(--text-primary);
   min-height: 100vh;
+  font-family: 'Geist', system-ui, sans-serif;
 }
 
 .font-mono {
-  font-family: 'Geist Mono', 'SF Mono', Monaco, monospace;
+  font-family: 'Geist Mono', monospace;
+}
+
+/* Subtle grain texture overlay */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.03;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+  z-index: 9999;
+}
+
+/* Spring transition for buttons */
+.spring-btn {
+  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.spring-btn:hover {
+  transform: translateY(-2px);
+}
+.spring-btn:active {
+  transform: translateY(0px) scale(0.98);
+}
+
+/* Subtle pulse for accents */
+@keyframes subtle-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+/* Float animation for visual interest */
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-8px); }
 }
