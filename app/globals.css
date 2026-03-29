@@ -1,23 +1,23 @@
 @import "tailwindcss";
 
-/* Reactbits-inspired fonts */
+/* Fonts */
 @import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700&family=Figtree:wght@400;500;600&display=swap');
 
 :root {
-  /* Dark terminal palette - not safe teal */
-  --bg: #050505;
-  --bg-elevated: #0A0A0A;
-  --surface: #111111;
+  /* Dark analyst palette - cool, not warm */
+  --bg: #080808;
+  --bg-elevated: #0D0D0D;
+  --surface: #141414;
   --surface-hover: #1A1A1A;
-  --border-soft: rgba(255,255,255,0.05);
-  --border-strong: rgba(255,255,255,0.1);
-  --text-primary: #F5F5F5;
-  --text-secondary: #8A8A8A;
-  --text-muted: #555555;
-  /* Degen red/amber accent */
-  --accent: #FF6B35;
-  --accent-hover: #FF8255;
-  --accent-subtle: rgba(255,107,53,0.12);
+  --border-soft: rgba(255,255,255,0.06);
+  --border-strong: rgba(255,255,255,0.12);
+  --text-primary: #F0F0F0;
+  --text-secondary: #808080;
+  --text-muted: #4A4A4A;
+  /* Cool accent - more analyst, less trading terminal */
+  --accent: #6366F1;
+  --accent-hover: #818CF8;
+  --accent-subtle: rgba(99,102,241,0.1);
   --success: #22C55E;
   --warning: #FBBF24;
   --danger: #EF4444;
@@ -51,41 +51,18 @@ h1, h2, h3, .headline {
   font-family: ui-monospace, 'SF Mono', Monaco, monospace;
 }
 
-/* Scanline overlay for intel vibe */
-body::before {
-  content: '';
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  opacity: 0.015;
-  background: repeating-linear-gradient(
-    0deg,
-    transparent,
-    transparent 2px,
-    rgba(255,255,255,0.03) 2px,
-    rgba(255,255,255,0.03) 4px
-  );
-  z-index: 9999;
-}
-
-/* Spring physics */
+/* Spring physics for buttons */
 .spring {
   transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 .spring:hover {
-  transform: translateY(-2px);
+  transform: translateY(-1px);
 }
 .spring:active {
   transform: scale(0.98);
 }
 
-/* Pulse glow */
-@keyframes pulse-glow {
-  0%, 100% { box-shadow: 0 0 20px var(--accent-subtle); }
-  50% { box-shadow: 0 0 30px var(--accent-subtle), 0 0 40px var(--accent-subtle); }
-}
-
-/* Typing effect */
+/* Typing cursor effect */
 @keyframes blink {
   0%, 100% { opacity: 1; }
   50% { opacity: 0; }

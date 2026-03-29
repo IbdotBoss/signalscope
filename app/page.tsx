@@ -4,14 +4,12 @@ import { useState, useCallback, useEffect } from "react";
 import { 
   MagnifyingGlass, 
   ArrowRight, 
-  Shield,
-  Lightning,
-  Eye,
-  Target,
-  Check,
-  X,
+  Clock,
+  ListChecks,
+  Link,
   ArrowUpRight,
-  Wallet
+  Wallet,
+  ArrowCounterClockwise
 } from "@phosphor-icons/react";
 
 interface Report {
@@ -27,54 +25,21 @@ interface Report {
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
-const VERDICTS = {
-  avoid: { color: "#EF4444", bg: "rgba(239,68,68,0.15)", label: "AVOID" },
-  weak: { color: "#FBBF24", bg: "rgba(251,191,36,0.15)", label: "WEAK" },
-  watchlist: { color: "#60A5FA", bg: "rgba(96,165,250,0.15)", label: "WATCHLIST" },
-  strong: { color: "#22C55E", bg: "rgba(34,197,94,0.15)", label: "STRONG" },
-  high_conviction: { color: "#FF6B35", bg: "rgba(255,107,53,0.15)", label: "HIGH CONFIDENCE" },
-};
+// Loading phases - analyst tone
+const LOADING_PHASES = [
+  "Reading transactions...",
+  "Checking behavior patterns...",
+  "Scoring activity...",
+  "Finalizing report...",
+];
 
-function IntelOrb() {
-  return (
-    <div style={{ position: "relative", width: "100%", aspectRatio: "1" }}>
-      <div style={{
-        position: "absolute", inset: 0,
-        border: "1px solid var(--border-soft)",
-        borderRadius: "50%",
-      }} />
-      <div style={{
-        position: "absolute", inset: "15%",
-        border: "1px solid rgba(255,107,53,0.2)",
-        borderRadius: "50%",
-        animation: "spin 20s linear infinite",
-      }} />
-      <div style={{
-        position: "absolute", inset: "30%",
-        border: "1px solid rgba(255,107,53,0.3)",
-        borderRadius: "50%",
-        animation: "spin 12s linear infinite reverse",
-      }} />
-      <div style={{
-        position: "absolute", top: "50%", left: "50%",
-        transform: "translate(-50%, -50%)",
-        width: "25%", height: "25%",
-        background: "var(--accent)",
-        borderRadius: "50%",
-        boxShadow: "0 0 40px rgba(255,107,53,0.3)",
-        animation: "pulse 3s ease-in-out infinite",
-      }} />
-      <div style={{
-        position: "absolute", top: "50%", left: "50%",
-        transform: "translate(-50%, -50%)",
-        width: "60%", height: "60%",
-        borderLeft: "1px solid rgba(255,107,53,0.15)",
-        borderRight: "1px solid rgba(255,107,53,0.15)",
-        borderTop: "1px solid rgba(255,107,53,0.15)",
-        borderBottom: "1px solid rgba(255,107,53,0.15)",
-      }} />
-    </div>
-  );
+// Score interpretation - plain English, not trading signals
+function getScoreInterpretation(score: number): string {
+  if (score >= 80) return "Consistent, predictable patterns";
+  if (score >= 60) return "Active with mostly stable behavior";
+  if (score >= 40) return "Mixed signals, watch for patterns";
+  if (score >= 20) return "Erratic or early-stage activity";
+  return "Insufficient history or high-risk indicators";
 }
 
 export default function Home() {
@@ -86,7 +51,7 @@ export default function Home() {
 
   useEffect(() => {
     if (loading) {
-      const i = setInterval(() => setPhase(p => (p + 1) % 4), 800);
+      const i = setInterval(() => setPhase(p => (p + 1) % LOADING_PHASES.length), 900);
       return () => clearInterval(i);
     }
     setPhase(0);
@@ -116,21 +81,12 @@ export default function Home() {
 
   const reset = () => { setReport(null); setInput(""); setError(""); };
 
-  const verdict = report ? VERDICTS[report.verdict as keyof typeof VERDICTS] : null;
-  const steps = ["Mapping wallets", "Tracking Smart Money", "Scoring conviction", "Building intel"];
-
   return (
     <main style={{ minHeight: "100vh", background: "var(--bg)", position: "relative" }}>
-      <div style={{
-        position: "fixed", top: "-30%", left: "-10%",
-        width: "60%", height: "60%",
-        background: "radial-gradient(ellipse, rgba(255,107,53,0.12) 0%, transparent 60%)",
-        pointerEvents: "none",
-      }} />
 
       <header style={{
-        padding: "24px 48px", display: "flex", alignItems: "center",
-        justifyContent: "space-between", borderBottom: "1px solid var(--border-soft)",
+        padding: "20px 48px", display: "flex", alignItems: "center",
+        justifyContent: "space-between",
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
           <div style={{
@@ -138,49 +94,36 @@ export default function Home() {
             background: "var(--accent)", display: "flex",
             alignItems: "center", justifyContent: "center",
           }}>
-            <Shield size={18} weight="fill" color="var(--bg)" />
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+              <path d="M2 8h12M8 2v12" stroke="var(--bg)" strokeWidth="2" strokeLinecap="round"/>
+            </svg>
           </div>
-          <span style={{ fontSize: "16px", fontWeight: "600", fontFamily: "Bricolage Grotesque, system-ui" }}>
+          <span style={{ fontSize: "16px", fontWeight: "600", fontFamily: "'Bricolage Grotesque', system-ui" }}>
             SignalScope
           </span>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", color: "var(--text-muted)" }}>
-          <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: "var(--success)", boxShadow: "0 0 8px var(--success)" }} />
-          Nansen connected
-        </div>
       </header>
 
-      <div style={{ maxWidth: "1100px", margin: "0 auto", padding: "60px 48px", display: "grid", gridTemplateColumns: "1.2fr 0.8fr", gap: "80px", alignItems: "start" }}>
+      <div style={{ maxWidth: "1100px", margin: "0 auto", padding: "40px 48px 80px", display: "grid", gridTemplateColumns: "1.2fr 0.8fr", gap: "80px", alignItems: "start" }}>
         <div>
           {!report ? (
             <>
-              <div style={{
-                display: "inline-flex", alignItems: "center", gap: "8px",
-                padding: "6px 14px", background: "var(--surface)",
-                borderRadius: "100px", fontSize: "12px", color: "var(--text-secondary)",
-                marginBottom: "24px", border: "1px solid var(--border-soft)",
-              }}>
-                <Lightning size={14} weight="fill" color="var(--accent)" />
-                Smart Money Intelligence
-              </div>
-
               <h1 style={{ 
-                fontSize: "clamp(36px, 5vw, 52px)", fontWeight: "600", color: "var(--text-primary)",
-                marginBottom: "20px", lineHeight: "1.1", letterSpacing: "-0.03em",
-                fontFamily: "Bricolage Grotesque, system-ui",
+                fontSize: "clamp(32px, 4.5vw, 48px)", fontWeight: "600", color: "var(--text-primary)",
+                marginBottom: "16px", lineHeight: "1.1", letterSpacing: "-0.03em",
+                fontFamily: "'Bricolage Grotesque', system-ui",
               }}>
-                See what the whales see<span style={{ color: "var(--accent)" }}>.</span>
+                Read any wallet<span style={{ color: "var(--accent)" }}>.</span>
               </h1>
 
               <p style={{ 
                 fontSize: "16px", color: "var(--text-secondary)",
                 marginBottom: "40px", lineHeight: "1.7", maxWidth: "420px",
               }}>
-                Before you ape in, check if Smart Money already moved. 
-                SignalScope reads wallet conviction from Nansen chain data.
+                Paste an address. Get a clear read on what that wallet has been doing.
               </p>
 
-              <div style={{ position: "relative", marginBottom: "28px" }}>
+              <div style={{ position: "relative", marginBottom: "24px" }}>
                 <div style={{
                   display: "flex", alignItems: "center", gap: "12px",
                   background: "var(--surface)", borderRadius: "12px",
@@ -205,37 +148,35 @@ export default function Home() {
                     disabled={loading || !input.trim()}
                     style={{
                       background: input.trim() && !loading ? "var(--accent)" : "var(--surface-hover)",
-                      color: input.trim() && !loading ? "var(--bg)" : "var(--text-muted)",
+                      color: input.trim() && !loading ? "#fff" : "var(--text-muted)",
                       border: "none", borderRadius: "10px",
                       padding: "12px 24px", fontSize: "14px", fontWeight: "500",
                       cursor: loading ? "not-allowed" : "pointer",
                       display: "flex", alignItems: "center", gap: "8px",
-                      transition: "transform 0.2s",
+                      transition: "all 0.2s",
                     }}
-                    onMouseEnter={(e) => e.currentTarget.style.transform = "translateY(-2px)"}
-                    onMouseLeave={(e) => e.currentTarget.style.transform = "translateY(0)"}
                   >
                     {loading ? (
                       <>
                         <span style={{ width: "14px", height: "14px", border: "2px solid transparent", borderTopColor: "currentColor", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
-                        {steps[phase]}...
+                        {LOADING_PHASES[phase]}
                       </>
                     ) : (
                       <>
                         <MagnifyingGlass size={16} weight="bold" />
-                        Investigate
+                        Analyze
                       </>
                     )}
                   </button>
                 </div>
                 {error && (
                   <p style={{ color: "var(--danger)", fontSize: "13px", marginTop: "10px", display: "flex", alignItems: "center", gap: "6px" }}>
-                    <X size={14} /> {error}
+                    {error}
                   </p>
                 )}
               </div>
 
-              <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+              <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
                 {[
                   { label: "vitalik.eth", addr: "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045" },
                   { label: "Base deployer", addr: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" },
@@ -246,10 +187,8 @@ export default function Home() {
                     style={{
                       background: "var(--surface)", border: "1px solid var(--border-soft)",
                       borderRadius: "8px", padding: "8px 14px", color: "var(--text-muted)",
-                      fontSize: "13px", cursor: "pointer", transition: "transform 0.2s",
+                      fontSize: "13px", cursor: "pointer", transition: "all 0.2s",
                     }}
-                    onMouseEnter={(e) => e.currentTarget.style.transform = "translateY(-2px)"}
-                    onMouseLeave={(e) => e.currentTarget.style.transform = "translateY(0)"}
                   >
                     {ex.label}
                   </button>
@@ -265,14 +204,15 @@ export default function Home() {
                   borderRadius: "8px", padding: "10px 16px", color: "var(--text-secondary)",
                   fontSize: "14px", cursor: "pointer", marginBottom: "36px",
                   display: "flex", alignItems: "center", gap: "8px",
+                  transition: "all 0.2s",
                 }}
               >
-                <ArrowRight size={14} style={{ transform: "rotate(180deg)" }} />
+                <ArrowCounterClockwise size={14} />
                 New search
               </button>
 
               <p style={{ fontSize: "11px", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "8px" }}>
-                Wallet Intel
+                Address
               </p>
               <p style={{ 
                 fontFamily: "ui-monospace, monospace", fontSize: "13px",
@@ -283,48 +223,46 @@ export default function Home() {
                 {report.entity.input}
               </p>
 
-              <div style={{ display: "flex", alignItems: "baseline", gap: "20px", marginBottom: "24px" }}>
+              <div style={{ display: "flex", alignItems: "baseline", gap: "20px", marginBottom: "16px" }}>
                 <span style={{ 
-                  fontSize: "80px", fontWeight: "700", color: verdict?.color,
-                  lineHeight: 1, letterSpacing: "-0.04em", fontFamily: "Bricolage Grotesque, system-ui",
+                  fontSize: "72px", fontWeight: "700", color: "var(--accent)",
+                  lineHeight: 1, letterSpacing: "-0.04em", fontFamily: "'Bricolage Grotesque', system-ui",
                 }}>
                   {report.score}
                 </span>
-                <div>
-                  <span style={{
-                    display: "inline-block", padding: "6px 14px", borderRadius: "6px",
-                    background: verdict?.bg, color: verdict?.color,
-                    fontSize: "13px", fontWeight: "600", marginBottom: "6px",
-                    fontFamily: "Bricolage Grotesque, system-ui",
-                  }}>
-                    {verdict?.label}
-                  </span>
-                  <p style={{ fontSize: "13px", color: "var(--text-muted)" }}>
-                    {report.confidence} confidence
-                  </p>
-                </div>
+                <span style={{ fontSize: "14px", color: "var(--text-muted)" }}>
+                  {report.confidence} confidence
+                </span>
               </div>
+
+              <p style={{ fontSize: "15px", color: "var(--text-secondary)", marginBottom: "32px", lineHeight: "1.6" }}>
+                {getScoreInterpretation(report.score)}
+              </p>
 
               <p style={{ fontSize: "15px", color: "var(--text-secondary)", lineHeight: "1.75", marginBottom: "28px" }}>
                 {report.summary}
               </p>
 
-              <p style={{ fontSize: "11px", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "14px" }}>
-                Intel
-              </p>
-              <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: "10px", marginBottom: "28px" }}>
-                {report.bullets.map((item, i) => (
-                  <li key={i} style={{ display: "flex", alignItems: "flex-start", gap: "12px", fontSize: "14px", color: "var(--text-secondary)" }}>
-                    <Check size={16} weight="bold" color="var(--success)" style={{ marginTop: "2px", flexShrink: 0 }} />
-                    {item}
-                  </li>
-                ))}
-              </ul>
+              {report.bullets.length > 0 && (
+                <>
+                  <p style={{ fontSize: "11px", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "14px" }}>
+                    Findings
+                  </p>
+                  <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: "10px", marginBottom: "28px" }}>
+                    {report.bullets.map((item, i) => (
+                      <li key={i} style={{ display: "flex", alignItems: "flex-start", gap: "12px", fontSize: "14px", color: "var(--text-secondary)" }}>
+                        <span style={{ color: "var(--accent)", marginTop: "2px", flexShrink: 0 }}>—</span>
+                        {item}
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
 
               {report.risk_flags.length > 0 && (
                 <div style={{ background: "var(--surface)", padding: "16px", borderRadius: "10px", border: "1px solid var(--border-soft)" }}>
                   <p style={{ fontSize: "11px", color: "var(--warning)", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "12px" }}>
-                    Warnings
+                    Notes
                   </p>
                   <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
                     {report.risk_flags.map((flag, i) => (
@@ -339,45 +277,73 @@ export default function Home() {
           )}
         </div>
 
-        <div style={{ paddingTop: !report ? "40px" : "80px" }}>
+        <div style={{ paddingTop: !report ? "20px" : "60px" }}>
           {!report ? (
             <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-              <IntelOrb />
-              
-              <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-                {[
-                  { Icon: Eye, title: "Track Smart Money", desc: "See where whales move before the crowd" },
-                  { Icon: Target, title: "Conviction Scoring", desc: "Data-driven wallet reliability scores" },
-                  { Icon: Lightning, title: "Seconds, Not Hours", desc: "Instant intel on any EVM address" },
-                ].map(({ Icon, title, desc }) => (
-                  <div key={title} style={{
-                    display: "flex", gap: "14px", padding: "16px",
-                    background: "var(--surface)", borderRadius: "10px",
-                    border: "1px solid var(--border-soft)",
-                  }}>
-                    <div style={{
-                      width: "36px", height: "36px", borderRadius: "8px",
-                      background: "rgba(255,107,53,0.12)",
-                      display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
-                    }}>
-                      <Icon size={18} color="var(--accent)" weight="bold" />
+              {/* Simple visual - just data points, no gimmicks */}
+              <div style={{
+                background: "var(--surface)",
+                borderRadius: "12px",
+                border: "1px solid var(--border-soft)",
+                padding: "24px",
+              }}>
+                <p style={{ fontSize: "12px", color: "var(--text-muted)", marginBottom: "16px", fontFamily: "'Bricolage Grotesque', system-ui" }}>
+                  What you get
+                </p>
+                <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                  {[
+                    { Icon: Clock, title: "On-chain history", desc: "Every move, in order" },
+                    { Icon: ListChecks, title: "Behavior analysis", desc: "Patterns, not just numbers" },
+                    { Icon: Link, title: "Source links", desc: "Verify everything yourself" },
+                  ].map(({ Icon, title, desc }) => (
+                    <div key={title} style={{ display: "flex", gap: "14px" }}>
+                      <div style={{
+                        width: "32px", height: "32px", borderRadius: "6px",
+                        background: "var(--accent-subtle)",
+                        display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+                      }}>
+                        <Icon size={16} color="var(--accent)" />
+                      </div>
+                      <div>
+                        <p style={{ fontSize: "14px", fontWeight: "500", color: "var(--text-primary)", marginBottom: "2px" }}>
+                          {title}
+                        </p>
+                        <p style={{ fontSize: "13px", color: "var(--text-muted)" }}>
+                          {desc}
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <p style={{ fontSize: "14px", fontWeight: "600", color: "var(--text-primary)", marginBottom: "4px", fontFamily: "Bricolage Grotesque, system-ui" }}>
-                        {title}
-                      </p>
-                      <p style={{ fontSize: "13px", color: "var(--text-muted)", lineHeight: "1.5" }}>
-                        {desc}
-                      </p>
-                    </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
+              </div>
+
+              {/* Simple example preview */}
+              <div style={{
+                background: "var(--surface)",
+                borderRadius: "12px",
+                border: "1px solid var(--border-soft)",
+                padding: "20px",
+              }}>
+                <p style={{ fontSize: "11px", color: "var(--text-muted)", marginBottom: "12px" }}>
+                  Example read
+                </p>
+                <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "12px" }}>
+                  <span style={{ fontSize: "32px", fontWeight: "700", color: "var(--accent)", fontFamily: "'Bricolage Grotesque', system-ui" }}>
+                    74
+                  </span>
+                  <span style={{ fontSize: "13px", color: "var(--text-muted)" }}>
+                    consistent patterns
+                  </span>
+                </div>
+                <p style={{ fontSize: "13px", color: "var(--text-secondary)", lineHeight: "1.6" }}>
+                  Active trader for 8 months. Prefers stablecoins. Profit-taking on larger swings.
+                </p>
               </div>
             </div>
           ) : (
             <div style={{ paddingTop: "20px" }}>
               <p style={{ fontSize: "11px", color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "14px" }}>
-                Evidence
+                Verify
               </p>
               <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
                 {report.evidence_links.map((ev, i) => (
@@ -390,11 +356,11 @@ export default function Home() {
                       display: "flex", alignItems: "center", justifyContent: "space-between",
                       padding: "16px", background: "var(--surface)", borderRadius: "10px",
                       border: "1px solid var(--border-soft)", textDecoration: "none",
-                      color: "var(--text-primary)",
+                      color: "var(--text-primary)", transition: "all 0.2s",
                     }}
                   >
                     <span style={{ fontSize: "14px" }}>{ev.label}</span>
-                    <ArrowUpRight size={16} color="var(--text-muted)" />
+                    <ArrowUpRight size="16" color="var(--text-muted)" />
                   </a>
                 ))}
               </div>
@@ -403,19 +369,8 @@ export default function Home() {
         </div>
       </div>
 
-      <footer style={{
-        position: "fixed", bottom: 0, left: 0, right: 0,
-        padding: "16px 48px", borderTop: "1px solid var(--border-soft)",
-        background: "var(--bg)", display: "flex", alignItems: "center",
-        justifyContent: "space-between", fontSize: "12px", color: "var(--text-muted)",
-      }}>
-        <span>Powered by Nansen CLI</span>
-        <span style={{ fontFamily: "ui-monospace, monospace", fontSize: "11px" }}>v1.0.0</span>
-      </footer>
-
       <style>{`
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-        @keyframes pulse { 0%, 100% { box-shadow: 0 0 20px rgba(255,107,53,0.3); } 50% { box-shadow: 0 0 40px rgba(255,107,53,0.5); } }
       `}</style>
     </main>
   );
