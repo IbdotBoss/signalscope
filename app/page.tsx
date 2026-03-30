@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { 
   MagnifyingGlass, 
   Wallet,
@@ -19,7 +19,7 @@ interface Report {
   evidence_links: { label: string; url: string }[];
 }
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "/api";
 
 const EVIDENCE_LOADING = [
   "Gathering evidence...",
@@ -28,60 +28,93 @@ const EVIDENCE_LOADING = [
   "Finalizing report...",
 ];
 
-// Typing hook for character-by-character reveal
-function useTyping(text: string, speed: number = 20, startWhen: boolean = false) {
+// Typing hook with proper cancellation
+function useTyping(text: string, speed: number = 20, active: boolean = false) {
   const [displayed, setDisplayed] = useState("");
   const [done, setDone] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   
   useEffect(() => {
-    if (!startWhen) {
-      setDisplayed("");
-      setDone(false);
-      return;
-    }
-    
-    let i = 0;
     setDisplayed("");
     setDone(false);
     
-    const interval = setInterval(() => {
+    if (!active || !text) return;
+    
+    let i = 0;
+    timerRef.current = setInterval(() => {
       if (i < text.length) {
         setDisplayed(text.slice(0, i + 1));
         i++;
       } else {
         setDone(true);
-        clearInterval(interval);
+        if (timerRef.current) clearInterval(timerRef.current);
       }
     }, speed);
     
-    return () => clearInterval(interval);
-  }, [text, speed, startWhen]);
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+  }, [text, speed, active]);
   
   return { displayed, done };
 }
 
-// Typing evidence card
+// Typing evidence card with proper timer cancellation
 function TypingEvidence({ 
   text, 
   accent, 
   delay,
-  started 
+  active 
 }: { 
   text: string; 
   accent: string;
   delay: number;
-  started: boolean;
+  active: boolean;
 }) {
   const [visible, setVisible] = useState(false);
-  const { displayed, done } = useTyping(text, 18, visible);
+  const [started, setStarted] = useState(false);
+  const [displayed, setDisplayed] = useState("");
+  const [done, setDone] = useState(false);
+  const showTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const typingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   
   useEffect(() => {
-    if (started) {
-      const t = setTimeout(() => setVisible(true), delay);
-      return () => clearTimeout(t);
-    }
+    // Cancel any pending timers
+    if (showTimerRef.current) clearTimeout(showTimerRef.current);
+    if (typingTimerRef.current) clearInterval(typingTimerRef.current);
+    
     setVisible(false);
-  }, [started, delay]);
+    setStarted(false);
+    setDisplayed("");
+    setDone(false);
+    
+    if (active) {
+      showTimerRef.current = setTimeout(() => {
+        setVisible(true);
+        setStarted(true);
+      }, delay);
+    }
+    
+    return () => {
+      if (showTimerRef.current) clearTimeout(showTimerRef.current);
+      if (typingTimerRef.current) clearInterval(typingTimerRef.current);
+    };
+  }, [active, delay]);
+  
+  useEffect(() => {
+    if (!started || !text) return;
+    
+    let i = 0;
+    typingTimerRef.current = setInterval(() => {
+      if (i < text.length) {
+        setDisplayed(text.slice(0, i + 1));
+        i++;
+      } else {
+        setDone(true);
+        if (typingTimerRef.current) clearInterval(typingTimerRef.current);
+      }
+    }, 18);
+    
+    return () => { if (typingTimerRef.current) clearInterval(typingTimerRef.current); };
+  }, [started, text]);
   
   if (!visible) return <div className="evidence-placeholder" />;
   
@@ -98,18 +131,53 @@ function TypingEvidence({
   );
 }
 
-// Typing summary
-function TypingSummary({ text, started }: { text: string; started: boolean }) {
+// Typing summary with proper cancellation
+function TypingSummary({ text, active }: { text: string; active: boolean }) {
   const [visible, setVisible] = useState(false);
-  const { displayed, done } = useTyping(text, 12, visible);
+  const [started, setStarted] = useState(false);
+  const [displayed, setDisplayed] = useState("");
+  const [done, setDone] = useState(false);
+  const showTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const typingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   
   useEffect(() => {
-    if (started) {
-      const t = setTimeout(() => setVisible(true), 200);
-      return () => clearTimeout(t);
-    }
+    if (showTimerRef.current) clearTimeout(showTimerRef.current);
+    if (typingTimerRef.current) clearInterval(typingTimerRef.current);
+    
     setVisible(false);
-  }, [started]);
+    setStarted(false);
+    setDisplayed("");
+    setDone(false);
+    
+    if (active) {
+      showTimerRef.current = setTimeout(() => {
+        setVisible(true);
+        setStarted(true);
+      }, 200);
+    }
+    
+    return () => {
+      if (showTimerRef.current) clearTimeout(showTimerRef.current);
+      if (typingTimerRef.current) clearInterval(typingTimerRef.current);
+    };
+  }, [active]);
+  
+  useEffect(() => {
+    if (!started || !text) return;
+    
+    let i = 0;
+    typingTimerRef.current = setInterval(() => {
+      if (i < text.length) {
+        setDisplayed(text.slice(0, i + 1));
+        i++;
+      } else {
+        setDone(true);
+        if (typingTimerRef.current) clearInterval(typingTimerRef.current);
+      }
+    }, 12);
+    
+    return () => { if (typingTimerRef.current) clearInterval(typingTimerRef.current); };
+  }, [started, text]);
   
   if (!visible) return null;
   
@@ -121,11 +189,15 @@ function TypingSummary({ text, started }: { text: string; started: boolean }) {
   );
 }
 
-function useCountUp(target: number, duration: number = 1500, startWhen: boolean = false) {
+// CountUp with proper cancellation
+function useCountUp(target: number, duration: number = 1500, active: boolean = false) {
   const [count, setCount] = useState(0);
+  const rafRef = useRef<number | null>(null);
   
   useEffect(() => {
-    if (!startWhen) return;
+    setCount(0);
+    
+    if (!active) return;
     
     const startTime = Date.now();
     const step = () => {
@@ -135,18 +207,20 @@ function useCountUp(target: number, duration: number = 1500, startWhen: boolean 
       setCount(Math.round(eased * target));
       
       if (progress < 1) {
-        requestAnimationFrame(step);
+        rafRef.current = requestAnimationFrame(step);
       }
     };
     
-    requestAnimationFrame(step);
-  }, [target, duration, startWhen]);
+    rafRef.current = requestAnimationFrame(step);
+    
+    return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
+  }, [target, duration, active]);
   
   return count;
 }
 
-function ScoreDisplay({ score, started }: { score: number; started: boolean }) {
-  const count = useCountUp(score, 1200, started);
+function ScoreDisplay({ score, active }: { score: number; active: boolean }) {
+  const count = useCountUp(score, 1200, active);
   
   return (
     <div className="score-display">
@@ -169,7 +243,8 @@ export default function Home() {
   const [report, setReport] = useState<Report | null>(null);
   const [error, setError] = useState("");
   const [phase, setPhase] = useState(0);
-  const [reportStarted, setReportStarted] = useState(false);
+  const [reportActive, setReportActive] = useState(false);
+  const [searchId, setSearchId] = useState(0);
 
   useEffect(() => {
     if (loading) {
@@ -187,7 +262,11 @@ export default function Home() {
     }
     setLoading(true);
     setError("");
-    setReportStarted(false);
+    setReportActive(false);
+    
+    // Increment searchId to cancel any in-flight animations
+    setSearchId(id => id + 1);
+    
     try {
       const res = await fetch(API_URL + "/api/investigate", {
         method: "POST",
@@ -195,15 +274,22 @@ export default function Home() {
         body: JSON.stringify({ input: input.trim() }),
       });
       if (!res.ok) throw new Error();
-      setReport(await res.json());
-      setTimeout(() => setReportStarted(true), 100);
+      const data = await res.json();
+      setReport(data);
+      setTimeout(() => setReportActive(true), 100);
     } catch {
       setError("Analysis failed. Check API.");
     }
     setLoading(false);
   }, [input]);
 
-  const reset = () => { setReport(null); setInput(""); setError(""); setReportStarted(false); };
+  const reset = () => { 
+    setReport(null); 
+    setInput(""); 
+    setError(""); 
+    setReportActive(false);
+    setSearchId(id => id + 1);
+  };
 
   const EVIDENCE_ACCENTS = [
     "#FF724C",
@@ -297,7 +383,7 @@ export default function Home() {
                 <p className="address-display">{report.entity.input}</p>
 
                 <div className="score-section">
-                  <ScoreDisplay score={report.score} started={reportStarted} />
+                  <ScoreDisplay score={report.score} active={reportActive} key={`score-${searchId}`} />
                   <div className="score-meta">
                     <p className="score-label">{getScoreLabel(report.score).label}</p>
                     <p className="score-confidence">{report.confidence} confidence</p>
@@ -305,7 +391,7 @@ export default function Home() {
                 </div>
                 <p className="score-detail">{getScoreLabel(report.score).detail}</p>
 
-                <TypingSummary text={report.summary} started={reportStarted} />
+                <TypingSummary text={report.summary} active={reportActive} key={`summary-${searchId}`} />
 
                 {report.bullets.length > 0 && (
                   <>
@@ -313,11 +399,11 @@ export default function Home() {
                     <div className="evidence-list">
                       {report.bullets.map((item, i) => (
                         <TypingEvidence
-                          key={i}
+                          key={`${searchId}-${i}`}
                           text={item}
                           accent={EVIDENCE_ACCENTS[i % EVIDENCE_ACCENTS.length]}
                           delay={300 + i * 250}
-                          started={reportStarted}
+                          active={reportActive}
                         />
                       ))}
                     </div>
